@@ -456,7 +456,7 @@ function handoffView(){
   } else if (m.step === "choose"){
     body = `<div class="big" style="font-size:24px">${w}, pick your secret rule</div>
       <div style="display:flex;flex-direction:column;gap:10px">${m.options.map((r,k)=>`<button class="option" id="opt-${k}" data-act="pickOpt" data-v="${k}" aria-pressed="${m.pick===k}"><span class="cat">${CATS[r.c]||"House rule"}</span><span class="rt">${esc(r.t)}</span><span class="rd">${esc(r.d)}</span></button>`).join("")}</div>
-      <button data-act="shuffleOpts" id="shuffleOpts">🔀 Show me 3 different ones</button>
+      <div class="btnrow"><button data-act="shuffleOpts" id="shuffleOpts">🔀 3 different ones</button><button data-act="pickRandom" id="pickRandom">🎲 Pick one for me</button></div>
       <details><summary style="cursor:pointer;font-weight:700">Or write your own</summary>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
           <input type="text" id="ownTitle" placeholder="Short name, like “Pickle”" maxlength="40" autocomplete="off" aria-label="Rule name">
@@ -467,8 +467,11 @@ function handoffView(){
       <button class="primary" data-act="seal" id="seal" ${m.pick==null?"disabled":""}>🔒 Seal this rule</button>
       <p class="hint">Tip: announce only that there's a new rule. Start enforcing it next hand. Everyone else has to figure it out.</p>`;
   } else {
+    const r = making.options[making.pick];
     body = `<div class="big">🔒 Sealed.</div>
-      <p class="hint" style="text-align:center">${w}, you can peek at it any time with “Hold to peek.” Now hand the phone back.</p>
+      ${making.random?`<p class="hint" style="text-align:center">The app picked this one for you.</p>`:""}
+      <div class="option" style="cursor:default"><span class="cat">Your secret rule</span><span class="rt">${esc(r.t)}</span><span class="rd">${esc(r.d)}</span></div>
+      <p class="hint" style="text-align:center">${w}, remember it. You can peek any time with “Hold to peek.” Now hand the phone back.</p>
       <button class="primary" data-act="doneHand" id="doneHand">Deal hand ${handNo()}</button>`;
   }
   return `<div class="handoff" role="dialog" aria-modal="true"><div class="inner">${body}</div></div>`;
@@ -659,6 +662,12 @@ document.addEventListener("click", e => {
       if (!t || !d){ making.error = "Give it a short name and say what has to happen."; render(); break; }
       making.options = [{ id:"own-"+Date.now().toString(36), c:"wild", t, d, own:true }]; making.pick = 0; making.error = ""; render(); break;
     }
+    case "pickRandom": {
+      const fresh = drawOptions(1);
+      if (fresh.length){ making.options = fresh; making.pick = 0; making.random = true; }
+      else if (making.options.length){ making.pick = Math.floor(Math.random()*making.options.length); making.random = true; }
+      else break;
+    } // falls through to seal
     case "seal": {
       const r = making.options[making.pick];
       state.rules.push({ id:r.id, t:r.t, d:r.d, c:r.c, by:making.winner, hand:state.hands.length });
