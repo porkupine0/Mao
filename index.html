@@ -129,6 +129,14 @@ table.st th:first-child,table.st td:first-child{text-align:left}
 .banner{background:var(--amber);color:var(--amber-ink);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px}
 .banner h2{font-size:24px;font-weight:800}
 .banner button{background:var(--amber-ink);color:var(--amber);border-color:var(--amber-ink)}
+.endrow{border-top:1px solid var(--line);padding-top:12px}
+.endrow button{flex:none}
+.gameover{background:linear-gradient(160deg,#f6d08d,#f0a73a);color:var(--amber-ink);border:0}
+.gameover .eyebrow{color:inherit;opacity:.75}
+.gameover h2{font-size:30px;font-weight:800;line-height:1.1}
+.gameover p{margin:0;font-weight:700}
+.gameover button{background:rgba(34,17,10,.08);color:var(--amber-ink);border-color:rgba(34,17,10,.25)}
+.gameover button#rematch{background:var(--amber-ink);color:var(--amber);border-color:var(--amber-ink)}
 
 /* guide */
 .guide{display:flex;flex-direction:column;gap:14px}
@@ -423,6 +431,7 @@ function setupView(){
 }
 
 function gameView(){
+  if (state.over) return overView();
   const n = state.hands.length, np = state.players.length;
   const wins = state.players.map((_,i)=> state.hands.filter(h=>h.winner===i).length);
   const pens = state.players.map((_,i)=> state.penalties.filter(p=>p.p===i).length);
@@ -463,7 +472,8 @@ function gameView(){
 
   const win = `<div class="panel"><h2>Hand ${handNo()}: who said Mao?</h2>
     <div class="chips">${state.players.map((_,i)=>`<button class="chip" id="win-${i}" data-act="win" data-i="${i}">${N(i)}</button>`).join("")}</div>
-    <p class="hint">Tap the winner. The app will ask you to hand them the phone so they can make a secret rule.</p></div>`;
+    <p class="hint">Tap the winner. The app will ask you to hand them the phone so they can make a secret rule.</p>
+    ${n ? `<div class="row endrow"><span class="hint grow">Done playing?</span><button class="small" data-act="endgame" id="endgame">${confirmKey==="end"?"Tap to end":"🏁 End game"}</button></div>` : ""}</div>`;
 
   let hist = "";
   if (n){
@@ -471,10 +481,40 @@ function gameView(){
       ${state.hands.map((h,k)=>{ const pp = state.penalties.filter(p=>p.hand===k+1).length; return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="grow"><b>Hand ${k+1}:</b> ${N(h.winner)} won</span><span class="hint num">${plural(pp,"penalty")}${h.rule?" · 🔒 rule made":""}</span></div>`; }).reverse().join("")}
       <button class="small ghost" data-act="undoPen" id="undoPen" ${state.penalties.length?"":"disabled"}>${confirmKey==="undoPen"?"Tap to confirm":"Undo last penalty"}</button></div>`;
   }
-  const reset = `<div class="btnrow">${hx.shareButton("Share standings", "small ghost")}<button class="small ghost" data-act="newgame" id="newgame">${confirmKey==="new"?"Tap to confirm":"New game"}</button></div>`;
+  const reset = n ? `<div class="btnrow">${hx.shareButton("Share standings", "small ghost")}<button class="small ghost" data-act="endgame" id="endgame2">${confirmKey==="end"?"Tap again to end the game":"🏁 End game"}</button></div>`
+    : `<div class="btnrow"><button class="small ghost" data-act="newgame" id="newgame">${confirmKey==="new"?"Tap to confirm":"Change players"}</button></div>`;
   const chairBanner = chairman != null && chairTitle() ? `<div class="banner" style="padding:14px 16px;gap:4px"><span class="eyebrow" style="color:inherit;opacity:.75">All hail</span><h2 style="font-size:21px">${esc(chairTitle())} ${N(chairman)}</h2><span style="font-size:14px">Address them by their full title until the next hand, or take a card.</span></div>` : "";
   return chairBanner + `<div class="panel" style="gap:10px"><div class="row"><h2 class="grow">Players</h2><span class="hint">Tap +1 to hand out a penalty card</span></div><div class="players">${players}</div></div>`
     + win + vault + starterBox + hist + statsView() + extrasPanel(true) + reset;
+}
+
+// After End game: who won (most hands won, as in the stats), saved in History, the big reveal, and what's next
+function overView(){
+  const n = state.hands.length, P = state.players.map((_, i) => i);
+  const t = P.map(i => state.hands.filter(h => h.winner === i).length), best = Math.max(...t), win = P.filter(i => t[i] === best);
+  const rest = P.filter(i => !win.includes(i)).sort((a, b) => t[b] - t[a] || a - b);
+  return `<div class="panel gameover"><span class="eyebrow">Game over · ${plural(n, "hand")}</span>
+    <h2>${win.length > 1 ? `Tie: ${win.map(N).join(" &amp; ")}` : `${N(win[0])} wins`}</h2>
+    <p>Won ${plural(best, "hand")}${win.length > 1 ? " each" : ", more than anyone"}.</p>
+    ${rest.length ? `<div class="num">${rest.map(i => `${N(i)} ${t[i]}`).join(" · ")}</div>` : ""}
+    ${hx.saved()}
+    <div class="btnrow"><button data-act="rematch" id="rematch">Rematch, same players</button><button data-act="newsetup" id="newsetup">New players</button></div>
+    <button class="small ghost" data-act="unend" id="unend">Oops, keep playing</button></div>` + revealView() + statsView();
+}
+// Every secret rule, and the starting rules when they were secret, to read out loud. One tap: the game is over.
+function revealView(){
+  const rules = state.rules, starters = STARTERS.filter(s => state.starter[s[0]]);
+  if (!rules.length && state.beginner) return "";
+  if (!state.revealed){
+    const what = rules.length ? `This game had ${plural(rules.length, "secret rule")}${state.beginner ? "" : ", and the starting rules were secret too"}.` : "The starting rules were secret this game.";
+    return `<div class="panel"><h2>The big reveal</h2><p class="hint">${what} Read every one out loud. It's the best part.</p>
+      <button class="primary" data-act="revealAll" id="revealAll">🎉 Reveal every rule</button></div>`;
+  }
+  const meta = r => [`Made by ${N(r.by)} after hand ${r.hand}`, r.cracked ? `cracked by ${N(r.crackedBy)}` : "", r.retired ? `retired after hand ${r.retiredAt}` : ""].filter(Boolean).join(" · ");
+  return `<div class="panel"><h2>The big reveal</h2>
+    ${rules.length ? `<div class="vault">${rules.map((r, k) => `<div class="sealed open"><span class="ic" aria-hidden="true">${r.retired ? "🪦" : r.cracked ? "🔓" : "📜"}</span><span class="t">Rule ${k+1}: ${esc(r.t)}</span><span class="m">${meta(r)}</span><div class="reveal">${esc(r.d)}</div></div>`).join("")}</div>` : `<p class="hint">No secret rules were made this game.</p>`}
+    ${state.beginner ? "" : `<div class="eyebrow">Starting rules</div><div class="starter">${starters.map(s => `<div><b>${s[1]}.</b> ${s[2]}</div>`).join("")}</div>`}
+  </div>`;
 }
 
 function sealedCard(id, icon, title, meta, content){
@@ -558,9 +598,9 @@ function statsView(){
     aw("Chairman", w.m?nm(w.who):"Nobody yet", w.m?`Won ${plural(w.m,"hand")}`:"No hands won yet"),
     aw("Penalty magnet", pm.m?nm(pm.who):"Nobody yet", pm.m?`${plural(pm.m,"penalty card")}`:"Everyone's been perfect"),
     aw("Squeaky clean", n?nm(cl.who):"–", n?`${plural(cl.m,"hand")} with no penalties`:""),
-    aw("Rule breaker", sb.m?nm(sb.who):"Nobody yet", sb.m?`Broke a secret rule ${plural(sb.m,"time")}`:"The secrets are safe so far"),
+    aw("Rule breaker", sb.m?nm(sb.who):"Nobody yet", sb.m?`Broke a secret rule ${plural(sb.m,"time")}`:state.over?"The secrets stayed safe":"The secrets are safe so far"),
     aw("Worst hand", worstHand.v?nm(worstHand.list.map(x=>x[0])):"Nobody yet", worstHand.v?`${plural(worstHand.v,"penalty")} in hand ${[...new Set(worstHand.list.map(x=>x[1]))].join(", ")}`:""),
-    aw("Most common crime", topReason?REASONS[topReason[0]]:"None yet", topReason?`${plural(topReason[1],"time")} so far`:""),
+    aw("Most common crime", topReason?REASONS[topReason[0]]:"None yet", topReason?`${plural(topReason[1],"time")}${state.over?"":" so far"}`:""),
     ...(state.extras.guess ? [aw("Codebreaker", cb.m?nm(cb.who):"Nobody yet", cb.m?`Cracked ${plural(cb.m,"secret rule")}`:"No rules cracked yet")] : []),
     ...(state.extras.titles && state.hands.some(h=>h.title) ? [aw("Latest title", N(state.hands[n-1].winner), esc(state.hands[n-1].title))] : []),
   ];
@@ -665,7 +705,7 @@ function guideView(){
       <li><b>Make rules that can be noticed.</b> A good rule is triggered by something visible, like a card being played, so players can eventually work it out. “Say pickle when a 6 is played” is great. “Think about pickles” is not.</li>
       <li><b>One rule per win.</b> Keep a cap of about 6 to 8 secret rules, or retire the oldest. Beyond that, nobody can play.</li>
       <li><b>No rules about bodies or embarrassing stuff.</b> Keep it fun for everyone.</li>
-      <li><b>Do the big reveal.</b> At the end of the night, tap “The big reveal” and read every secret rule out loud. It's the best part.</li></ul></section>
+      <li><b>Do the big reveal.</b> At the end of the night, tap “🏁 End game,” then “Reveal every rule,” and read every secret rule out loud. It's the best part.</li></ul></section>
 
     <section><h3>Mao etiquette</h3>
       <ul><li>Never explain a rule. Just name the offense.</li>
@@ -687,7 +727,7 @@ document.addEventListener("click", e => {
     case "starter": { const k = b.dataset.v; if (k !== "match"){ state.starter[k] = !state.starter[k]; save(); render(); } break; }
     case "start":
       state.players = Array.from({length:state.count},(_,k)=> (state.names[k]||"").trim() || `Player ${k+1}`);
-      state.hands = []; state.penalties = []; state.rules = []; state.guesses = []; state.lastRetired = null; state.revealed = false; state.phase = "play"; save(); render(); keepAwake(); break;
+      state.hands = []; state.penalties = []; state.rules = []; state.guesses = []; state.lastRetired = null; state.revealed = false; state.phase = "play"; state.over = false; save(); render(); keepAwake(); break;
     case "penOpen": penFor = penFor === i ? null : i; render(); break;
     case "pen": state.penalties.push({ p:i, r:+b.dataset.v, hand:handNo() }); penFor = null; save(); showToast(`${N(i)}: ${REASONS[+b.dataset.v]}. Take a card${state.sips?" and a sip":""}.`); render(); break;
     case "undoPen": confirmThen("undoPen", ()=>{ state.penalties.pop(); save(); render(); }); break;
@@ -735,7 +775,14 @@ document.addEventListener("click", e => {
     case "guessWrong": state.guesses.push({ p:guess.guesser, rule:guess.rule, ok:false, hand:handNo() }); state.penalties.push({ p:guess.guesser, r:9, hand:handNo() });
       showToast(`Wrong! ${N(guess.guesser)} takes a penalty card${state.sips?" and a sip":""}.`); guess = null; save(); render(); break;
     case "reveal": if (state.revealed){ state.revealed = false; save(); render(); } else confirmThen("reveal", ()=>{ state.revealed = true; save(); render(); }); break;
-    case "newgame": confirmThen("new", ()=>{ state.phase = "setup"; state.hands = []; state.penalties = []; state.rules = []; state.revealed = false; state.tab = "game"; save(); render(); }); break;
+    case "newgame": confirmThen("new", ()=>{ state.phase = "setup"; state.over = false; state.hands = []; state.penalties = []; state.rules = []; state.revealed = false; state.tab = "game"; save(); render(); }); break;
+    case "endgame": confirmThen("end", ()=>{ state.over = true; penFor = null; guess = null; save(); render(); window.scrollTo(0, 0); }); break;
+    case "unend": state.over = false; save(); render(); break;
+    case "revealAll": state.revealed = true; save(); render(); break;
+    case "rematch": case "newsetup":
+      state.over = false; state.hands = []; state.penalties = []; state.rules = []; state.guesses = []; state.lastRetired = null; state.revealed = false;
+      if (act === "newsetup"){ state.phase = "setup"; state.tab = "game"; }
+      save(); render(); window.scrollTo(0, 0); break;
     case "fav": { const id = b.dataset.id; if (prefs.favs[id]) delete prefs.favs[id]; else prefs.favs[id] = true; savePrefs(); render(); break; }
     case "mode": prefs.mode = b.dataset.v; savePrefs(); render(); break;
     case "cat": prefs.cat = b.dataset.v; savePrefs(); render(); break;
@@ -776,20 +823,21 @@ document.addEventListener("input", e => {
 
 /* hx:js:start */
 // History adapter: how a Mao game looks to the shared history module.
-// The app keeps no points and has no game over. Each hand records who won it (said "Mao"), and the app ranks
-// players by hands won: the big number on each player's card and its "Chairman" award. So a hand scores 1 for its
-// winner and the most hands won wins. Penalty cards and the secret rules winners made go in extra.
-// A game runs until someone taps New game, which finishes it; until then it's In progress.
+// The app keeps no points. Each hand records who won it (said "Mao"), and the app ranks players by hands won:
+// the big number on each player's card and its "Chairman" award. So a hand scores 1 for its winner and the most
+// hands won wins. Penalty cards and the secret rules winners made go in extra.
+// A game runs until someone taps End game (or New players), which finishes it; until then it's In progress.
 const HX = {
   app: "mao", title: "Mao", unit: ["hand", "hands"], sideWord: "player", lowWins: false,
   guest: n => /^player \d+$/i.test(String(n).trim()),
   current(){
     const P = state.players || [], H = state.hands || [];
     if (state.phase !== "play" || !P.length || !H.length) return null;
+    const t = P.map((_,i) => H.filter(h => h.winner === i).length), best = Math.max(...t);
     return {
       sides: P.map(p => ({ name: p, players: [p] })),
       rounds: H.map(h => P.map((_,i) => h.winner === i ? 1 : 0)),
-      done: false,
+      done: !!state.over, winners: state.over ? P.map((_,i) => i).filter(i => t[i] === best) : undefined,
       note: "score = hands won",
       extra: {
         pens: (state.penalties || []).map(p => [p.p, p.r, p.hand]),
@@ -809,7 +857,7 @@ const HX = {
     const common = Object.entries(why).sort((a,b) => b[1] - a[1])[0];
     const penLine = x.pens.length ? `Penalty cards: ${g.sides.map((_,i) => nb(`${nm(i)} ${pens[i]}`)).join(" · ")} · most common: ${esc(REASONS[common[0]] || "Other")} (${common[1]})` : "No penalty cards.";
     // While the game is still being played, secret rules stay sealed here too, unless the app has revealed them.
-    const live = g.id === state.hxId;
+    const live = g.id === state.hxId && !g.done;
     const rules = (x.rules || []).map((r,k) => {
       const meta = [`${nm(r.by)}, after hand ${r.hand}`, r.cracked != null ? `cracked by ${nm(r.cracked)}` : "", r.retired != null ? `retired after hand ${r.retired}` : ""].filter(Boolean).join(", ");
       return !live || x.revealed || r.cracked != null || r.retired != null ? `Rule ${k+1}: <b>${esc(r.t)}</b> (${meta}). ${esc(r.d)}` : `Rule ${k+1}: 🔒 sealed (${meta})`;
